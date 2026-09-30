@@ -120,7 +120,6 @@ final class VeilWindow: NSWindow {
     /// 遮罩还显示着，但留在了别的空间（例如切到了全屏应用）。这时不要收起它，
     /// 切回原来的空间时它会随桌面一起直接出现。
     var isParkedInOtherSpace: Bool { wantsVisible && isVisible && !isOnActiveSpace }
-
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 

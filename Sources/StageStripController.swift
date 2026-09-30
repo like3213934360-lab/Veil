@@ -123,6 +123,10 @@ final class StageStripController {
             return r.width >= 24 ? r.integral : nil
         }
         if !force, !fadeIn, layout == lastLayout, veils.windows.count == screens.count { return }
+        // 空间切换中：什么都不动，也不记录布局。
+        // （以前这里先记下了布局再跳过，切换结束后的刷新发现“布局没变”就直接返回，
+        //   中途被收起的遮罩再也不会出现——这就是“多切几次遮罩直接没了”）
+        if spaceSwitching { return }
         let changed = layout != lastLayout
         lastLayout = layout
         // 用和缩略图遮罩相同的动画时长同步聚焦遮罩，过渡过程中也不会出现缝隙
@@ -133,14 +137,19 @@ final class StageStripController {
             // 这块屏幕在显示全屏应用、正在切换空间，或者遮罩还留在别的空间：
             // 桌面空间里的遮罩原样留着，不重排、不收起、不淡入淡出。
             // 空间切换期间台前调度会把缩略图暂时撤掉再放回来，如果此时跟着收起/重新显示，就会“显示-消失-再显示”。
-            if w.wantsVisible, spaceSwitching || w.isParkedInOtherSpace || (isFullscreenSpace?(i) ?? false) { continue }
-            if spaceSwitching { continue }
+            if w.wantsVisible, w.isParkedInOtherSpace || (isFullscreenSpace?(i) ?? false) { continue }
             if let rect {
-                w.fit(rect, animated: animation > 0 && !fadeIn, duration: animation)
-                if !w.wantsVisible || fadeIn { w.show() } else { w.orderFrontRegardless() }
-            } else if !w.isParkedInOtherSpace {
-                // 留在桌面空间里的遮罩不收起：切回桌面时直接出现，不用重新淡入
-                w.hide()
+                w.fit(rect, animated: animation > 0 && !fadeIn && w.wantsVisible, duration: animation)
+                if !w.wantsVisible || fadeIn || !w.isVisible {
+                    // 切换空间后补回来的遮罩直接到位，不做淡入（否则就是“消失-再出现”）
+                    w.show(duration: recovering ? 0 : Motion.fadeIn)
+                } else {
+                    w.orderFrontRegardless()
+                }
+            } else if !w.isParkedInOtherSpace, w.wantsVisible {
+                // 缩略图暂时找不到（台前调度正在重新摆放，或者切换空间刚结束）：
+                // 不立刻收起，等一会儿再确认；确实没有了才收起。避免“显示-消失-再显示”。
+                scheduleHideCheck()
             }
         }
     }
@@ -152,6 +161,8 @@ final class StageStripController {
     /// 切换空间期间（含切换动画和台前调度重新摆放缩略图）不改动遮罩；结束后再统一刷新一次
     private var spaceSwitching = false
     private var spaceWork: DispatchWorkItem?
+    /// 切换结束后的校正中：补回的遮罩直接到位，不淡入
+    private var recovering = false
 
     /// 切换空间时调用（⌃←/→、切到全屏应用等）。连续快速切换会不断顺延，直到停下来。
     func spaceWillChange() {
@@ -163,11 +174,36 @@ final class StageStripController {
             guard let self else { return }
             self.spaceSwitching = false
             self.spaceWork = nil
-            // 只做位置对齐，不淡入淡出：遮罩一直在，看起来就是连续的
-            self.refresh(animation: Motion.settle)
+            // 强制校正一次：只对齐位置；万一遮罩不见了，直接补回（不淡入）
+            self.recovering = true
+            self.refresh(force: true, animation: Motion.settle)
+            self.recovering = false
         }
         spaceWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.spaceQuiet, execute: work)
+    }
+
+    /// 缩略图消失后的延迟确认：0.6 秒后重新扫描，仍然没有才收起遮罩
+    private var hideCheck: DispatchWorkItem?
+    private func scheduleHideCheck() {
+        guard hideCheck == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.active, !self.suspended else { return }
+            self.hideCheck = nil
+            if self.spaceSwitching { return } // 切换结束时会统一校正
+            self.cachedStrips = Self.stageManagerEnabled ? Self.thumbnailRects() : []
+            let screens = NSScreen.screens
+            for (i, w) in self.veils.windows.enumerated() where i < screens.count {
+                guard w.wantsVisible, w.isOnActiveSpace,
+                      !(self.isFullscreenSpace?(i) ?? false) else { continue }
+                let r = self.stripRect(on: screens[i]).map { self.clip($0, avoiding: self.avoidRect) }
+                if r == nil || r!.width < 24 { w.hide() }
+            }
+            // 同步记录的布局，下次有缩略图出现时会正常显示
+            self.refresh(force: true)
+        }
+        hideCheck = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 
     /// 切换动画约 1 秒，之后台前调度还会重新摆放缩略图，留足余量
