@@ -213,7 +213,6 @@ final class FocusController {
             work = focusScreen ?? mouseScreenIndex(screens) ?? 0
         }
         workScreen = work
-
         if roles.count != veils.windows.count { roles = Array(repeating: .hidden, count: veils.windows.count) }
 
         for (i, w) in veils.windows.enumerated() where i < screens.count {
@@ -224,7 +223,8 @@ final class FocusController {
                 // 保持清晰的窗口：焦点窗口在这块屏幕上就用它，否则用这块屏幕上最靠前的窗口
                 let keep = (focusScreen == i ? targetRect.map { (target!, $0) } : nil)
                     ?? windows.first { screenIndex(of: $0.rect, in: screens) == i }.map { ($0.id, $0.rect) }
-                if let keep, !Self.covers(keep.1, screen) {
+                // 全屏空间：整块屏幕只有这个应用（包括它的工具栏等附属窗口），不加遮罩
+                if let keep, !Self.covers(keep.1, screen), !isFullscreenSpace(i, windows: windows, screens: screens) {
                     role = .below(keep.0)
                     if let col = column(i) { rect = Self.exclude(col, from: screen) }
                 } else {
@@ -336,7 +336,34 @@ final class FocusController {
         reorder()
     }
 
-    private struct WinInfo { let id: Int; let rect: CGRect }
+    private struct WinInfo { let id: Int; let rect: CGRect; let pid: pid_t }
+
+    /// 这块屏幕当前是否处于某个应用的全屏空间：
+    /// 屏幕上最靠前的窗口所属应用，有一个 AXFullScreen 的窗口落在这块屏幕上。
+    /// （全屏窗口的实际尺寸可能比屏幕小，例如带刘海的屏幕会让出菜单栏高度，不能只看尺寸）
+    private func isFullscreenSpace(_ i: Int, windows: [WinInfo], screens: [NSScreen]) -> Bool {
+        guard AXIsProcessTrusted(),
+              let top = windows.first(where: { screenIndex(of: $0.rect, in: screens) == i }) else { return false }
+        let app = AXUIElementCreateApplication(top.pid)
+        var ws: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &ws) == .success,
+              let arr = ws as? [AXUIElement] else { return false }
+        for w in arr {
+            var fs: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(w, "AXFullScreen" as CFString, &fs) == .success,
+                  (fs as? Bool) == true else { continue }
+            var pv: CFTypeRef?, sv: CFTypeRef?
+            var p = CGPoint.zero, s = CGSize.zero
+            if AXUIElementCopyAttributeValue(w, kAXPositionAttribute as CFString, &pv) == .success, let pv {
+                AXValueGetValue(pv as! AXValue, .cgPoint, &p)
+            }
+            if AXUIElementCopyAttributeValue(w, kAXSizeAttribute as CFString, &sv) == .success, let sv {
+                AXValueGetValue(sv as! AXValue, .cgSize, &s)
+            }
+            if screenIndex(of: Coords.toCocoa(CGRect(origin: p, size: s)), in: screens) == i { return true }
+        }
+        return false
+    }
 
     /// 当前屏幕上的普通窗口（从前到后），排除本程序和台前调度缩略图。Cocoa 坐标。
     private func onScreenWindows() -> [WinInfo] {
@@ -352,7 +379,8 @@ final class FocusController {
                   let b = w[kCGWindowBounds as String] as? [String: CGFloat],
                   let x = b["X"], let y = b["Y"], let wd = b["Width"], let ht = b["Height"],
                   wd > 60, ht > 60 else { continue }
-            out.append(WinInfo(id: id, rect: Coords.toCocoa(CGRect(x: x, y: y, width: wd, height: ht))))
+            let pid = (w[kCGWindowOwnerPID as String] as? Int32) ?? 0
+            out.append(WinInfo(id: id, rect: Coords.toCocoa(CGRect(x: x, y: y, width: wd, height: ht)), pid: pid))
         }
         return out
     }
