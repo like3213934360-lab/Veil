@@ -3,8 +3,8 @@ import AppKit
 /// 台前调度缩略图遮罩：在缩略图条上方盖一层毛玻璃（不挡鼠标，仍可点击切换）。
 /// 位置只在事件发生时计算（切换应用、屏幕变化、开关），无轮询。
 final class StageStripController {
-    /// 比普通窗口高一级，盖住 WindowManager 的缩略图（它们在 layer 0）
-    private lazy var veils = ScreenVeils(level: .floating) { [weak self] screen in
+    /// 盖住 WindowManager 的缩略图（layer 0）和缩略图上的应用图标（layer 8）
+    private lazy var veils = ScreenVeils(level: .aboveStageIcons) { [weak self] screen in
         self?.stripRect(on: screen)
     }
     private(set) var active = false
@@ -137,10 +137,21 @@ final class StageStripController {
 
     // MARK: 定位
 
+    /// 每块屏幕上台前调度缩略图条所在的竖列（不受“缩略图模糊”开关影响，给聚焦模式让位用）。
+    /// 与遮罩一样用自动检测的宽度；没有缩略图条的屏幕返回 nil。
+    func stripColumns() -> [NSRect?] {
+        guard Self.stageManagerEnabled else { return NSScreen.screens.map { _ in nil } }
+        cachedStrips = Self.thumbnailRects()
+        return NSScreen.screens.map { s in
+            guard let r = stripRect(on: s, allowFallback: false), r.width > 0 else { return nil }
+            return r
+        }
+    }
+
     /// 某块屏幕上的遮罩区域（Cocoa 坐标）。
     /// 自动模式：根据 WindowManager 缩略图窗口判断在屏幕左侧还是右侧，遮住整条竖列；
     /// 找不到缩略图时退回固定宽度（程序坞在左边时缩略图条在右边）。
-    private func stripRect(on screen: NSScreen) -> NSRect? {
+    private func stripRect(on screen: NSScreen, allowFallback: Bool = true) -> NSRect? {
         let vf = screen.visibleFrame
         let full = screen.frame
         let manual = Settings.shared.stripWidth
@@ -163,7 +174,7 @@ final class StageStripController {
         if !mine.isEmpty {
             let u = mine.reduce(mine[0]) { $0.union($1) }
             width = side == .left ? (u.maxX - vf.minX + pad) : (vf.maxX - u.minX + pad)
-        } else if !cachedStrips.isEmpty || Self.windowManagerRunning {
+        } else if !allowFallback || !cachedStrips.isEmpty || Self.windowManagerRunning {
             // 这块屏幕上没有缩略图：要么缩略图条在别的屏幕，要么被当前窗口挤走、系统已经把它藏起来了。
             // 两种情况都没东西可遮，不再退回固定宽度（否则会凭空盖住窗口边缘）
             return nil

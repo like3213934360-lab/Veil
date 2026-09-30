@@ -118,15 +118,23 @@ struct MaterialPreset {
     ]
 }
 
-/// 多显示器下聚焦模式的模糊范围
+/// 多显示器下聚焦模式如何决定“工作屏”：工作屏只保留当前窗口清晰，其他屏幕整块模糊
 enum FocusScope: Int, CaseIterable {
-    case focusedScreen = 0, perScreen, all
+    case followMouse = 0, followFocus
+
+    static var current: FocusScope { FocusScope(rawValue: Settings.shared.focusScope) ?? .followMouse }
 
     var name: String {
         switch self {
-        case .focusedScreen: return "仅模糊主窗口所在屏幕"
-        case .perScreen: return "每块屏幕保留最前窗口"
-        case .all: return "模糊所有屏幕"
+        case .followMouse: return "跟随鼠标"
+        case .followFocus: return "跟随焦点窗口"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .followMouse: return "鼠标所在屏幕清晰，其他屏幕模糊"
+        case .followFocus: return "焦点窗口所在屏幕清晰，其他屏幕模糊"
         }
     }
 }

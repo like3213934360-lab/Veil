@@ -34,6 +34,7 @@ final class FocusController {
 
     func setActive(_ on: Bool, style: VeilStyle) {
         active = on
+        roles = []
         if on {
             veils.sync()
             veils.apply(style, animated: false)
@@ -42,12 +43,15 @@ final class FocusController {
             pendingReorder?.cancel()
             veils.hide()
         }
+        updateMouseTracking()
     }
 
     func apply(_ style: VeilStyle, animated: Bool) { veils.apply(style, animated: animated) }
 
     func screensChanged() {
+        updateMouseTracking()
         guard active else { return }
+        roles = []
         veils.sync()
         reorder(fadeIn: true)
     }
@@ -72,15 +76,27 @@ final class FocusController {
             guard let self else { return }
             self.geometryWork = nil
             let f = self.focusedWindowFrame()
+            // 跟随焦点时，窗口被拖到另一块屏幕要换工作屏
             if self.active, !self.suspended, NSScreen.screens.count > 1,
-               Settings.shared.focusScope != FocusScope.all.rawValue, let f,
+               FocusScope.current == .followFocus, let f,
                self.screenIndex(of: f, in: NSScreen.screens) != self.lastFocusScreen {
                 self.reorder()
             }
             self.onGeometryChange?(f)
+            self.scheduleSettle()
         }
         geometryWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.033, execute: work)
+    }
+
+    /// 窗口缩放/切换后，台前调度会把缩略图条滑走或滑回，等动画结束再按新的缩略图位置重排一次
+    private var settleWork: DispatchWorkItem?
+    func scheduleSettle() {
+        guard active else { return }
+        settleWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.reorder() }
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
     }
 
     /// 当前焦点窗口的位置（Cocoa 坐标），用 AX 直接读取，比 CGWindowList 便宜
@@ -118,52 +134,148 @@ final class FocusController {
         }
         pendingReorder = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+        scheduleSettle()
     }
 
-    /// 按“聚焦范围”设置，把每块屏幕的遮罩排到合适的窗口下方（或收起）。
-    /// 已经显示的遮罩只做重排，不做透明度动画，避免闪动。
+    // MARK: 布局
+    //
+    // 每块屏幕一个遮罩，分两种角色：
+    //  - 工作屏（鼠标所在 / 焦点窗口所在，可在菜单切换）：遮罩排在“要保持清晰的窗口”正下方，
+    //    并让出台前调度缩略图那一条竖列（缩略图是否模糊由“缩略图模糊”功能单独负责）。
+    //  - 其他屏幕：遮罩排在所有普通窗口之上，整块模糊。
+
+    private enum Role: Equatable { case hidden, below(Int), front }
+    private var roles: [Role] = []
+    /// 当前工作屏下标
+    private var workScreen: Int?
+
+    /// 每块屏幕上台前调度缩略图条的竖列（没有时为 nil），由 Core 接到 StageStripController
+    var stripColumns: (() -> [NSRect?])?
+
     func reorder(fadeIn: Bool = false) {
         guard active, !suspended else { return }
-        let target = focusedWindowID()
         let screens = NSScreen.screens
-        let scope = FocusScope(rawValue: Settings.shared.focusScope) ?? .focusedScreen
-        let windows = onScreenWindows()
-        let focusScreen = target.flatMap { id in windows.first { $0.id == id } }.map { screenIndex(of: $0.rect, in: screens) }
-        lastFocusScreen = focusScreen
-        /// 铺满整块屏幕的窗口（全屏应用）：遮罩无法排到它下面，而且整块屏幕只有它，直接不遮
-        func coversScreen(_ id: Int?, _ i: Int) -> Bool {
-            guard let id, i < screens.count, let r = windows.first(where: { $0.id == id })?.rect else { return false }
-            let f = screens[i].frame
-            return r.minX <= f.minX + 1 && r.minY <= f.minY + 1 && r.maxX >= f.maxX - 1 && r.maxY >= f.maxY - 1
-        }
+        guard !screens.isEmpty else { return }
+        let columns = stripColumns?() ?? []
+        func column(_ i: Int) -> NSRect? { i < columns.count ? columns[i] : nil }
 
-        for (i, w) in veils.windows.enumerated() {
-            var below = target
-            if i == focusScreen, coversScreen(target, i) { w.hide(); continue }
-            if target != nil, let focusScreen, i != focusScreen, i < screens.count {
-                switch scope {
-                case .focusedScreen:
-                    w.hide()
-                    continue
-                case .perScreen:
-                    // 这块屏幕上最靠前的普通窗口保持清晰；没有窗口时只模糊桌面
-                    if let top = windows.first(where: { screenIndex(of: $0.rect, in: screens) == i }) {
-                        if coversScreen(top.id, i) { w.hide(); continue }
-                        below = top.id
-                    }
-                case .all:
-                    break
+        // 排除台前调度缩略图（应用窗口缩小后的替身也在 layer 0，落在缩略图竖列里）
+        let windows = onScreenWindows().filter { w in
+            let i = screenIndex(of: w.rect, in: screens)
+            guard let col = column(i) else { return true }
+            return !col.insetBy(dx: -8, dy: -8).contains(w.rect)
+        }
+        let target = focusedWindowID()
+        let targetRect = target.flatMap { id in windows.first { $0.id == id }?.rect }
+        let focusScreen = targetRect.map { screenIndex(of: $0, in: screens) }
+        lastFocusScreen = focusScreen
+
+        let work: Int
+        if screens.count > 1, FocusScope.current == .followMouse {
+            work = mouseScreenIndex(screens) ?? focusScreen ?? 0
+        } else {
+            work = focusScreen ?? mouseScreenIndex(screens) ?? 0
+        }
+        workScreen = work
+
+        if roles.count != veils.windows.count { roles = Array(repeating: .hidden, count: veils.windows.count) }
+
+        for (i, w) in veils.windows.enumerated() where i < screens.count {
+            let screen = screens[i].frame
+            var rect = screen
+            let role: Role
+            if i == work {
+                // 保持清晰的窗口：焦点窗口在这块屏幕上就用它，否则用这块屏幕上最靠前的窗口
+                let keep = (focusScreen == i ? targetRect.map { (target!, $0) } : nil)
+                    ?? windows.first { screenIndex(of: $0.rect, in: screens) == i }.map { ($0.id, $0.rect) }
+                if let keep, !Self.covers(keep.1, screen) {
+                    role = .below(keep.0)
+                    if let col = column(i) { rect = Self.exclude(col, from: screen) }
+                } else {
+                    // 没有窗口，或窗口铺满整屏（背后没东西可遮）：不加遮罩
+                    role = .hidden
+                }
+            } else {
+                role = .front
+            }
+
+            let prev = roles[i]
+            roles[i] = role
+            switch role {
+            case .hidden:
+                w.hide()
+            case .below(let id):
+                if w.level != .normal { w.level = .normal }
+                // 从别的角色切过来时，尺寸直接到位；同一角色下（缩略图条出现/消失）平滑过渡
+                w.fit(rect, animated: prev == role || { if case .below = prev { return true }; return false }(),
+                      duration: Motion.settle)
+                if w.wantsVisible && !fadeIn {
+                    w.order(.below, relativeTo: id)
+                } else {
+                    w.show { $0.order(.below, relativeTo: id) }
+                }
+            case .front:
+                // 整块模糊的屏幕：提到缩略图应用图标之上，整屏都不会有东西穿出来
+                if w.level != .aboveStageIcons { w.level = .aboveStageIcons }
+                w.fit(rect)
+                if prev == .front, w.wantsVisible, !fadeIn {
+                    w.orderFrontRegardless()
+                } else {
+                    // 变成“整块模糊”：从清晰渐变到模糊，避免整屏突然一变
+                    w.show(duration: Motion.screenSwitch) { $0.orderFrontRegardless() }
                 }
             }
-            let order: (VeilWindow) -> Void = { w in
-                if let below { w.order(.below, relativeTo: below) } else { w.orderFrontRegardless() }
-            }
-            if w.wantsVisible && !fadeIn {
-                order(w)
-            } else {
-                w.show(order: order)
-            }
         }
+    }
+
+    /// 窗口是否铺满整块屏幕（全屏或手动拉满）
+    private static func covers(_ r: CGRect, _ screen: CGRect) -> Bool {
+        r.minX <= screen.minX + 1 && r.minY <= screen.minY + 1 && r.maxX >= screen.maxX - 1 && r.maxY >= screen.maxY - 1
+    }
+
+    /// 从整屏矩形里去掉缩略图竖列（竖列贴在左边或右边）
+    private static func exclude(_ col: NSRect, from screen: NSRect) -> NSRect {
+        var r = screen
+        if col.midX > screen.midX {
+            r.size.width = max(0, col.minX - screen.minX)
+        } else {
+            r.origin.x = col.maxX
+            r.size.width = max(0, screen.maxX - col.maxX)
+        }
+        return r.integral
+    }
+
+    // MARK: 跟随鼠标
+
+    private var mouseMonitor: Any?
+
+    /// 只在多屏 + 跟随鼠标时监听鼠标移动；处理函数只判断鼠标是否换了屏幕，开销极低
+    func updateMouseTracking() {
+        let need = active && !suspended && NSScreen.screens.count > 1 && FocusScope.current == .followMouse
+        if need, mouseMonitor == nil {
+            mouseMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+            ) { [weak self] _ in self?.mouseMoved() }
+        } else if !need, let m = mouseMonitor {
+            NSEvent.removeMonitor(m)
+            mouseMonitor = nil
+        }
+    }
+
+    private func mouseMoved() {
+        guard active, !suspended, let i = mouseScreenIndex(NSScreen.screens), i != workScreen else { return }
+        reorder()
+    }
+
+    private func mouseScreenIndex(_ screens: [NSScreen]) -> Int? {
+        let p = NSEvent.mouseLocation
+        return screens.firstIndex { NSMouseInRect(p, $0.frame, false) }
+    }
+
+    /// 菜单里切换了多屏方式
+    func scopeChanged() {
+        updateMouseTracking()
+        reorder()
     }
 
     private struct WinInfo { let id: Int; let rect: CGRect }
@@ -206,8 +318,9 @@ final class FocusController {
     func suspend(_ s: Bool, duration: TimeInterval = Motion.fadeOut) {
         guard s != suspended else { return }
         suspended = s
+        updateMouseTracking()
         guard active else { return }
-        if s { veils.hide(duration: duration) } else { reorder(fadeIn: true) }
+        if s { veils.hide(duration: duration); roles = [] } else { reorder(fadeIn: true) }
     }
 
     // MARK: 找当前主窗口

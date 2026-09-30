@@ -26,6 +26,12 @@ enum Coords {
     }
 }
 
+extension NSWindow.Level {
+    /// 台前调度缩略图上的应用小图标在 modalPanel 层（8），缩略图本身在 0 层。
+    /// 遮罩要比图标再高一层，否则图标会“穿”出模糊层。仍低于程序坞（20）和菜单栏（24）。
+    static let aboveStageIcons = NSWindow.Level(rawValue: NSWindow.Level.modalPanel.rawValue + 1)
+}
+
 enum Motion {
     /// 尊重系统“减少动态效果”
     static var reduced: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
@@ -40,6 +46,7 @@ enum Motion {
     static let revealIn: TimeInterval = 0.1      // 悬停透视：变透明
     static let revealOut: TimeInterval = 0.16    // 悬停透视：恢复模糊
     static let revealLeaveDelay: TimeInterval = 0.06 // 鼠标离开后多久开始恢复
+    static let screenSwitch: TimeInterval = 0.16 // 多屏切换工作屏
 }
 
 /// 遮罩窗口：无边框、透明、不接收鼠标、不抢焦点。

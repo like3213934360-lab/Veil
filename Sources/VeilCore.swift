@@ -45,6 +45,7 @@ final class VeilCore: NSObject, NSApplicationDelegate {
 
         focus.onFocusChange = { [weak self] in self?.focusChanged() }
         focus.onGeometryChange = { [weak self] rect in self?.strip.windowMoved(rect) }
+        focus.stripColumns = { [weak self] in self?.strip.stripColumns() ?? [] }
 
         hotKeys.handler = { [weak self] action, pressed in self?.hotKey(action, pressed: pressed) }
         hotKeys.register()
@@ -94,7 +95,8 @@ final class VeilCore: NSObject, NSApplicationDelegate {
 
     /// 只在有遮罩需要跟随窗口时才处理移动/缩放事件
     private func updateGeometryTracking() {
-        focus.trackGeometry = stripOn || (focusOn && NSScreen.screens.count > 1)
+        // 聚焦模式需要在窗口缩放后重排（台前调度会把缩略图条滑走/滑回）
+        focus.trackGeometry = stripOn || focusOn
         if stripOn { strip.avoidRect = focus.focusedWindowFrame() }
     }
 

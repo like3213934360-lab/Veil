@@ -89,11 +89,12 @@ final class MenuBar: NSObject, NSMenuDelegate {
                 let mi = NSMenuItem(title: sc.name, action: #selector(pickScope(_:)), keyEquivalent: "")
                 mi.target = self
                 mi.tag = sc.rawValue
-                mi.state = s.focusScope == sc.rawValue ? .on : .off
+                mi.state = FocusScope.current == sc ? .on : .off
+                mi.toolTip = sc.detail
                 scopeMenu.addItem(mi)
+                scopeMenu.addItem(note("    " + sc.detail))
             }
-            let cur = FocusScope(rawValue: s.focusScope) ?? .focusedScreen
-            menu.addItem(submenu("多屏：\(cur.name)", scopeMenu))
+            menu.addItem(submenu("多屏：\(FocusScope.current.name)", scopeMenu))
         }
 
         // 快捷键修饰键
@@ -230,7 +231,7 @@ final class MenuBar: NSObject, NSMenuDelegate {
 
     @objc private func pickScope(_ sender: NSMenuItem) {
         Settings.shared.focusScope = sender.tag
-        core.focus.reorder(fadeIn: true)
+        core.focus.scopeChanged()
     }
 
     @objc private func pickModifier(_ sender: NSMenuItem) { core.setModifierPreset(sender.tag) }
