@@ -13,6 +13,8 @@ final class FocusController {
 
     /// 焦点变化回调（给 VeilCore 做白名单判断、刷新缩略图遮罩）
     var onFocusChange: (() -> Void)?
+    /// 切换了空间（⌃←/→、切到全屏应用）：在焦点处理之前通知，让缩略图遮罩进入冷静期
+    var onSpaceChange: (() -> Void)?
 
     init() {
         let nc = NSWorkspace.shared.notificationCenter
@@ -27,6 +29,7 @@ final class FocusController {
         nc.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
             // Ctrl+←/→ 切换空间（例如切到另一个全屏应用）：工作屏跟着焦点走，
             // 并在切换动画结束后再校正一次（动画期间拿到的窗口列表可能还是旧空间的）
+            self?.onSpaceChange?()
             self?.preferFocus = true
             self?.focusChanged()
             self?.spaceSettle()

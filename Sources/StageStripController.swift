@@ -130,9 +130,11 @@ final class StageStripController {
         veils.sync(resize: false)
         for (i, rect) in layout.enumerated() where i < veils.windows.count {
             let w = veils.windows[i]
-            // 这块屏幕在显示全屏应用（或刚切走）：桌面空间里的遮罩原样留着，不重排、不收起，
-            // 否则 orderFront 会把它拖进全屏空间，快速切回来时就会闪
-            if w.wantsVisible, w.isParkedInOtherSpace || (isFullscreenSpace?(i) ?? false) { continue }
+            // 这块屏幕在显示全屏应用、正在切换空间，或者遮罩还留在别的空间：
+            // 桌面空间里的遮罩原样留着，不重排、不收起、不淡入淡出。
+            // 空间切换期间台前调度会把缩略图暂时撤掉再放回来，如果此时跟着收起/重新显示，就会“显示-消失-再显示”。
+            if w.wantsVisible, spaceSwitching || w.isParkedInOtherSpace || (isFullscreenSpace?(i) ?? false) { continue }
+            if spaceSwitching { continue }
             if let rect {
                 w.fit(rect, animated: animation > 0 && !fadeIn, duration: animation)
                 if !w.wantsVisible || fadeIn { w.show() } else { w.orderFrontRegardless() }
@@ -144,6 +146,32 @@ final class StageStripController {
     }
 
     // MARK: 定位
+
+    // MARK: 空间切换冷静期
+
+    /// 切换空间期间（含切换动画和台前调度重新摆放缩略图）不改动遮罩；结束后再统一刷新一次
+    private var spaceSwitching = false
+    private var spaceWork: DispatchWorkItem?
+
+    /// 切换空间时调用（⌃←/→、切到全屏应用等）。连续快速切换会不断顺延，直到停下来。
+    func spaceWillChange() {
+        guard active else { return }
+        spaceSwitching = true
+        settleWork?.cancel()
+        spaceWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.spaceSwitching = false
+            self.spaceWork = nil
+            // 只做位置对齐，不淡入淡出：遮罩一直在，看起来就是连续的
+            self.refresh(animation: Motion.settle)
+        }
+        spaceWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.spaceQuiet, execute: work)
+    }
+
+    /// 切换动画约 1 秒，之后台前调度还会重新摆放缩略图，留足余量
+    private static let spaceQuiet: TimeInterval = 1.3
 
     /// 第 i 块屏幕是否正在显示全屏应用的空间（由 Core 接到 FocusController）
     var isFullscreenSpace: ((Int) -> Bool)?
