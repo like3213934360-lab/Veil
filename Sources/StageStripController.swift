@@ -146,24 +146,28 @@ final class StageStripController {
         let manual = Settings.shared.stripWidth
         let pad: CGFloat = 16
 
-        // 按中心点归属屏幕（缩略图可能越过屏幕边缘几像素）
-        // 只认靠近屏幕左右边缘的（切换动画途中飞过屏幕中部的缩略图忽略）
+        // 缩略图条只会出现在固定的一侧：程序坞在左边时在右侧，否则在左侧。
+        // 只认“中心点在本屏幕内、且靠近这一侧边缘”的缩略图。
+        // 这样可以排除：
+        //  - 切换动画途中飞过屏幕中部的缩略图；
+        //  - 窗口占满相邻屏幕时，台前调度把缩略图推出那块屏幕边缘藏起来，
+        //    坐标恰好落进本屏幕另一侧（例如左屏右边缘推出 -> 落在右屏左边缘）。
+        let side: Side = Self.dockOnLeft ? .right : .left
         let edge = full.width / 4
         let mine = cachedStrips.filter {
-            full.contains(CGPoint(x: $0.midX, y: $0.midY)) && ($0.midX - full.minX < edge || full.maxX - $0.midX < edge)
+            let c = CGPoint(x: $0.midX, y: $0.midY)
+            guard full.contains(c) else { return false }
+            return side == .left ? (c.x - full.minX < edge) : (full.maxX - c.x < edge)
         }
-        var side: Side
         var width: CGFloat
         if !mine.isEmpty {
             let u = mine.reduce(mine[0]) { $0.union($1) }
-            side = u.midX < full.midX ? .left : .right
             width = side == .left ? (u.maxX - vf.minX + pad) : (vf.maxX - u.minX + pad)
         } else if !cachedStrips.isEmpty || Self.windowManagerRunning {
             // 这块屏幕上没有缩略图：要么缩略图条在别的屏幕，要么被当前窗口挤走、系统已经把它藏起来了。
             // 两种情况都没东西可遮，不再退回固定宽度（否则会凭空盖住窗口边缘）
             return nil
         } else {
-            side = Self.dockOnLeft ? .right : .left
             width = 200
         }
         if manual > 0 { width = CGFloat(manual) }
