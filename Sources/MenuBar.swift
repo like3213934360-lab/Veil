@@ -37,9 +37,12 @@ final class MenuBar: NSObject, NSMenuDelegate {
         setShortcut(focusItem, .focus)
         menu.addItem(focusItem)
 
-        let stripItem = toggle("模糊台前调度缩略图", on: core.stripOn, action: #selector(toggleStrip))
+        let stripItem = toggle("模糊台前调度缩略图", on: core.stripOn || core.focusOn, action: #selector(toggleStrip))
         setShortcut(stripItem, .strip)
+        // 聚焦模式开着时缩略图总是模糊，这一项只作状态显示
+        stripItem.isEnabled = !core.focusOn
         menu.addItem(stripItem)
+        if core.focusOn { menu.addItem(note("    聚焦模式下缩略图总是模糊")) }
         if !StageStripController.stageManagerEnabled {
             menu.addItem(note("台前调度未开启"))
         }

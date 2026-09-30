@@ -89,15 +89,27 @@ final class VeilCore: NSObject, NSApplicationDelegate {
         defer { updateGeometryTracking() }
         focus.suspend(focusSuspended, duration: 0)
         focus.setActive(on, style: .current)
+        syncStripActive()
         if Settings.shared.rememberState { Settings.shared.focusOn = on }
         menu?.refresh()
+    }
+
+    /// 缩略图遮罩是否实际显示：单独开了“缩略图模糊”，或者开了聚焦模式
+    /// （聚焦模式本身就应该把缩略图一起模糊，鼠标悬停时透视）
+    private var stripEffective: Bool { stripOn || focusOn }
+
+    private func syncStripActive() {
+        guard strip.active != stripEffective else { return }
+        if stripEffective { strip.avoidRect = focus.focusedWindowFrame() }
+        strip.suspend(stripSuspended, duration: 0)
+        strip.setActive(stripEffective, style: .current)
     }
 
     /// 只在有遮罩需要跟随窗口时才处理移动/缩放事件
     private func updateGeometryTracking() {
         // 聚焦模式需要在窗口缩放后重排（台前调度会把缩略图条滑走/滑回）
-        focus.trackGeometry = stripOn || focusOn
-        if stripOn { strip.avoidRect = focus.focusedWindowFrame() }
+        focus.trackGeometry = stripEffective
+        if stripEffective { strip.avoidRect = focus.focusedWindowFrame() }
     }
 
     func setStrip(_ on: Bool) {
@@ -105,8 +117,7 @@ final class VeilCore: NSObject, NSApplicationDelegate {
         stripOn = on
         if on { requestAccessibilityIfNeeded() }
         defer { updateGeometryTracking() }
-        strip.suspend(stripSuspended, duration: 0)
-        strip.setActive(on, style: .current)
+        syncStripActive()
         if Settings.shared.rememberState { Settings.shared.stripOn = on }
         menu?.refresh()
     }
@@ -217,7 +228,7 @@ final class VeilCore: NSObject, NSApplicationDelegate {
             whitelisted = wl
             updateSuspension()
         }
-        guard stripOn else { return }
+        guard stripEffective else { return }
         strip.avoidRect = focus.focusedWindowFrame()
         strip.refresh()
         // 台前调度切换应用时缩略图有动画，稍后再校正一次（合并为单次）
