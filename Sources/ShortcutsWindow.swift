@@ -37,7 +37,10 @@ final class ShortcutsWindow: NSObject, NSWindowDelegate {
         rows.spacing = 10
         rows.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
 
-        let tip = NSTextField(wrappingLabelWithString: "点击右侧按钮，然后按下新的组合键。⎋ 取消录制，⌫ 清空。\nWindows 键盘上的 Win 键就是 ⌘。")
+        let tip = NSTextField(wrappingLabelWithString: """
+            点击右侧按钮，然后按下新的组合键。⎋ 取消录制，⌫ 清空。
+            符号对照：⌘ = command　⌥ = option（alt）　⌃ = control　⇧ = shift
+            """)
         tip.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         tip.textColor = .secondaryLabelColor
         tip.preferredMaxLayoutWidth = 420
@@ -103,7 +106,7 @@ final class ShortcutsWindow: NSObject, NSWindowDelegate {
         let overriding = HotKeys.Action.allCases.filter { $0.shortcut?.overridesAppShortcuts == true }
         if !overriding.isEmpty {
             lines.append("提示：" + overriding.map { HotKeys.label($0) }.joined(separator: "、")
-                         + " 只用了 ⌘，会覆盖其他应用里相同的快捷键（例如浏览器 ⌘1 切换标签页）。")
+                         + " 只用了 ⌘（command），会覆盖其他应用里相同的快捷键（例如浏览器 ⌘1 切换标签页）。")
         }
         if HotKeys.Action.quit.shortcut == nil {
             lines.append("强制退出没有快捷键：Veil 出问题时只能用终端 pkill -x Veil 退出。")

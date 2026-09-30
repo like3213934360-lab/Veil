@@ -49,11 +49,13 @@ Veil 是一个纯原生 AppKit 编写的菜单栏小工具，用系统毛玻璃�
 | `⌃⌥⌘S` | 开关缩略图模糊 |
 | `⌃⌥⌘B` | 紧急隐私（全屏模糊） |
 | `⌃⌥⌘↑` / `⌃⌥⌘↓` | 增强 / 减弱模糊 |
-| `⌘1`（Windows 键盘上是 Win+1） | **强制退出 Veil**，任何状态下都能立即退出 |
+| `⌥1`（Mac 键盘上按 option/alt + 1） | **强制退出 Veil**，任何状态下都能立即退出 |
 | 连按两下右 Option | 开关聚焦模式（可选，默认关闭） |
 
 快捷键被其他应用占用时，菜单和快捷键窗口中会以红字提示。
-只用 `⌘` 的组合（例如 `⌘1`）会覆盖其他应用里相同的快捷键，窗口中也会提示。
+只用 `⌘`（command）的组合（例如 `⌘1`）会覆盖其他应用里相同的快捷键，窗口中也会提示。
+
+符号对照：`⌘` = command，`⌥` = option（alt），`⌃` = control，`⇧` = shift。
 
 ### 系统要求
 
@@ -175,11 +177,13 @@ Every hotkey can be changed from **"自定义快捷键…" (Customize Shortcuts)
 | `⌃⌥⌘S` | Toggle strip blur |
 | `⌃⌥⌘B` | Panic mode (full-screen blur) |
 | `⌃⌥⌘↑` / `⌃⌥⌘↓` | Stronger / weaker blur |
-| `⌘1` (Win+1 on a Windows keyboard) | **Force quit Veil** — works in any state |
+| `⌥1` (option/alt + 1 on a Mac keyboard) | **Force quit Veil** — works in any state |
 | Double-tap right Option | Toggle focus mode (optional, off by default) |
 
 If a hotkey is already taken, the menu and the shortcuts window show a red warning.
-Combinations using only `⌘` (such as `⌘1`) override the same shortcut in other apps; the window warns about this too.
+Combinations using only `⌘` (command), such as `⌘1`, override the same shortcut in other apps; the window warns about this too.
+
+Symbols: `⌘` = command, `⌥` = option (alt), `⌃` = control, `⇧` = shift.
 
 ### Requirements
 

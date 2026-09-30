@@ -157,8 +157,8 @@ final class HotKeys {
             case .panic: return Shortcut(kVK_ANSI_B, hyper)
             case .stronger: return Shortcut(kVK_UpArrow, hyper)
             case .weaker: return Shortcut(kVK_DownArrow, hyper)
-            // Windows 键盘的 Win 键在 Mac 上就是 ⌘，所以 Win+1 = ⌘1
-            case .quit: return Shortcut(kVK_ANSI_1, Shortcut.cmd)
+            // ⌥1：Mac 键盘上是 Option（alt）+ 1
+            case .quit: return Shortcut(kVK_ANSI_1, Shortcut.option)
             }
         }
 
