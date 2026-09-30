@@ -1,0 +1,5 @@
+build/
+.DS_Store
+*.p12
+*.pem
+.shell_test
