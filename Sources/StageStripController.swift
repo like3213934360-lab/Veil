@@ -122,7 +122,10 @@ final class StageStripController {
             return r.width >= 24 ? r.integral : nil
         }
         if !force, !fadeIn, layout == lastLayout, veils.windows.count == screens.count { return }
+        let changed = layout != lastLayout
         lastLayout = layout
+        // 用和缩略图遮罩相同的动画时长同步聚焦遮罩，过渡过程中也不会出现缝隙
+        defer { if changed { onLayoutChange?(fadeIn ? 0 : animation) } }
         veils.sync(resize: false)
         for (i, rect) in layout.enumerated() where i < veils.windows.count {
             let w = veils.windows[i]
@@ -137,9 +140,14 @@ final class StageStripController {
 
     // MARK: 定位
 
-    /// 每块屏幕上台前调度缩略图条所在的竖列（不受“缩略图模糊”开关影响，给聚焦模式让位用）。
-    /// 与遮罩一样用自动检测的宽度；没有缩略图条的屏幕返回 nil。
+    /// 缩略图遮罩的位置变了（聚焦遮罩据此同步让位，保证两块严丝合缝）
+    var onLayoutChange: ((TimeInterval) -> Void)?
+
+    /// 每块屏幕上缩略图遮罩所占的竖列，给聚焦模式让位用。
+    /// 遮罩显示中时，直接返回遮罩的目标位置（唯一数据源，两块遮罩的边界永远是同一个值）；
+    /// 未显示时才自己计算。没有缩略图条的屏幕返回 nil。
     func stripColumns() -> [NSRect?] {
+        if active, !suspended, lastLayout.count == NSScreen.screens.count { return lastLayout }
         guard Self.stageManagerEnabled else { return NSScreen.screens.map { _ in nil } }
         cachedStrips = Self.thumbnailRects()
         return NSScreen.screens.map { s in

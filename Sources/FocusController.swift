@@ -152,7 +152,8 @@ final class FocusController {
     /// 每块屏幕上台前调度缩略图条的竖列（没有时为 nil），由 Core 接到 StageStripController
     var stripColumns: (() -> [NSRect?])?
 
-    func reorder(fadeIn: Bool = false) {
+    /// fitDuration：工作屏遮罩改变宽度时的动画时长（与缩略图遮罩同步，默认 Motion.settle）
+    func reorder(fadeIn: Bool = false, fitDuration: TimeInterval = Motion.settle) {
         guard active, !suspended else { return }
         let screens = NSScreen.screens
         guard !screens.isEmpty else { return }
@@ -207,16 +208,18 @@ final class FocusController {
             case .below(let id):
                 if w.level != .normal { w.level = .normal }
                 // 从别的角色切过来时，尺寸直接到位；同一角色下（缩略图条出现/消失）平滑过渡
-                w.fit(rect, animated: prev == role || { if case .below = prev { return true }; return false }(),
-                      duration: Motion.settle)
+                let wasBelow: Bool = { if case .below = prev { return true }; return false }()
+                w.fit(rect, animated: wasBelow && fitDuration > 0, duration: fitDuration)
                 if w.wantsVisible && !fadeIn {
                     w.order(.below, relativeTo: id)
                 } else {
                     w.show { $0.order(.below, relativeTo: id) }
                 }
             case .front:
-                // 整块模糊的屏幕：提到缩略图应用图标之上，整屏都不会有东西穿出来
-                if w.level != .aboveStageIcons { w.level = .aboveStageIcons }
+                // 整块模糊的屏幕：至少提到缩略图应用图标之上；
+                // 开了“顶层模糊”时提到最高层，连菜单栏、程序坞、通知弹窗一起盖住
+                let lv: NSWindow.Level = Settings.shared.topLevelBlurEffective ? .topMost : .aboveStageIcons
+                if w.level != lv { w.level = lv }
                 w.fit(rect)
                 if prev == .front, w.wantsVisible, !fadeIn {
                     w.orderFrontRegardless()
@@ -271,6 +274,9 @@ final class FocusController {
         let p = NSEvent.mouseLocation
         return screens.firstIndex { NSMouseInRect(p, $0.frame, false) }
     }
+
+    /// 菜单里切换了“顶层模糊”：非工作屏的遮罩换层级
+    func topLevelChanged() { reorder() }
 
     /// 菜单里切换了多屏方式
     func scopeChanged() {

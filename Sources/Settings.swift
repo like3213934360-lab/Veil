@@ -21,6 +21,7 @@ final class Settings {
             K.whitelist: [String](),
             K.focusScope: 0,
             K.hoverReveal: true,
+            K.topLevelBlur: false,
         ])
     }
 
@@ -39,7 +40,14 @@ final class Settings {
         static let whitelist = "whitelist"
         static let focusScope = "focusScope"
         static let hoverReveal = "hoverReveal"
+        static let topLevelBlur = "topLevelBlur"
     }
+
+    /// 聚焦模式下，非工作屏用顶层模糊（盖住菜单栏、程序坞、通知弹窗）。只在两块以上屏幕时生效。
+    var topLevelBlur: Bool { get { d.bool(forKey: K.topLevelBlur) } set { d.set(newValue, forKey: K.topLevelBlur) } }
+
+    /// 顶层模糊是否实际生效
+    var topLevelBlurEffective: Bool { topLevelBlur && NSScreen.screens.count > 1 }
 
     /// 鼠标悬停在台前调度区域时透视（渐隐遮罩），移开后恢复
     var hoverReveal: Bool { get { d.bool(forKey: K.hoverReveal) } set { d.set(newValue, forKey: K.hoverReveal) } }

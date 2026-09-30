@@ -30,6 +30,9 @@ extension NSWindow.Level {
     /// 台前调度缩略图上的应用小图标在 modalPanel 层（8），缩略图本身在 0 层。
     /// 遮罩要比图标再高一层，否则图标会“穿”出模糊层。仍低于程序坞（20）和菜单栏（24）。
     static let aboveStageIcons = NSWindow.Level(rawValue: NSWindow.Level.modalPanel.rawValue + 1)
+
+    /// 顶层模糊：高于菜单栏、程序坞、通知横幅、弹出菜单，整块屏幕什么都透不出来
+    static let topMost = NSWindow.Level.screenSaver
 }
 
 enum Motion {

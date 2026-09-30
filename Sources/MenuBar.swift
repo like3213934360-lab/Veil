@@ -37,6 +37,14 @@ final class MenuBar: NSObject, NSMenuDelegate {
         setShortcut(focusItem, .focus)
         menu.addItem(focusItem)
 
+        // 顶层模糊：只有多屏时可用（单屏时整块屏幕被顶层盖住就没法工作了）
+        let multi = NSScreen.screens.count > 1
+        let topItem = toggle("顶层模糊其他屏幕", on: Settings.shared.topLevelBlur && multi, action: #selector(toggleTopLevel))
+        topItem.isEnabled = multi
+        topItem.toolTip = "非工作屏连同菜单栏、程序坞、通知弹窗一起模糊"
+        menu.addItem(topItem)
+        menu.addItem(note(multi ? "    盖住菜单栏、程序坞和通知弹窗" : "    需要连接两块以上屏幕"))
+
         let stripItem = toggle("模糊台前调度缩略图", on: core.stripOn || core.focusOn, action: #selector(toggleStrip))
         setShortcut(stripItem, .strip)
         // 聚焦模式开着时缩略图总是模糊，这一项只作状态显示
@@ -245,6 +253,12 @@ final class MenuBar: NSObject, NSMenuDelegate {
 
     @objc private func removeWhitelist(_ sender: NSMenuItem) {
         if let id = sender.representedObject as? String { core.removeFromWhitelist(id) }
+    }
+
+    @objc private func toggleTopLevel() {
+        guard NSScreen.screens.count > 1 else { return }
+        Settings.shared.topLevelBlur.toggle()
+        core.focus.topLevelChanged()
     }
 
     @objc private func toggleHoverReveal() {
