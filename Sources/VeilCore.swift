@@ -46,6 +46,7 @@ final class VeilCore: NSObject, NSApplicationDelegate {
         focus.onFocusChange = { [weak self] in self?.focusChanged() }
         focus.onGeometryChange = { [weak self] rect in self?.strip.windowMoved(rect) }
         focus.stripColumns = { [weak self] in self?.strip.stripColumns() ?? [] }
+        strip.isFullscreenSpace = { [weak self] i in self?.focus.screenShowsFullscreenSpace(i) ?? false }
         // 缩略图遮罩一移动，聚焦遮罩立刻用同样的动画跟上，两者边界始终重合
         strip.onLayoutChange = { [weak self] dur in
             guard let self, self.focusOn else { return }

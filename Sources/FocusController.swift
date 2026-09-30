@@ -213,6 +213,7 @@ final class FocusController {
             work = focusScreen ?? mouseScreenIndex(screens) ?? 0
         }
         workScreen = work
+        var fullscreenHere = false
         if roles.count != veils.windows.count { roles = Array(repeating: .hidden, count: veils.windows.count) }
 
         for (i, w) in veils.windows.enumerated() where i < screens.count {
@@ -224,7 +225,8 @@ final class FocusController {
                 let keep = (focusScreen == i ? targetRect.map { (target!, $0) } : nil)
                     ?? windows.first { screenIndex(of: $0.rect, in: screens) == i }.map { ($0.id, $0.rect) }
                 // 全屏空间：整块屏幕只有这个应用（包括它的工具栏等附属窗口），不加遮罩
-                if let keep, !Self.covers(keep.1, screen), !isFullscreenSpace(i, windows: windows, screens: screens) {
+                fullscreenHere = isFullscreenSpace(i, windows: windows, screens: screens)
+                if let keep, !Self.covers(keep.1, screen), !fullscreenHere {
                     role = .below(keep.0)
                     if let col = column(i) { rect = Self.exclude(col, from: screen) }
                 } else {
@@ -236,8 +238,11 @@ final class FocusController {
             }
 
             let prev = roles[i]
-            // 遮罩留在了别的空间（刚切到全屏应用）：不收起，切回去时随桌面一起直接出现，没有淡入闪烁
-            if role == .hidden, w.isParkedInOtherSpace { continue }
+            // 这块屏幕正在显示全屏应用的空间（或者正在切换过去/回来）：
+            // 桌面空间里的遮罩完全不动——既不收起，也不重排（重排会把它拖进全屏空间）。
+            // 切回桌面时它随桌面一起滑回来，直接就是模糊好的，快速来回切换也不会闪。
+            if w.spaceMode == .currentSpace, w.wantsVisible,
+               w.isParkedInOtherSpace || (i == work && fullscreenHere) { continue }
             roles[i] = role
             switch role {
             case .hidden:
@@ -343,6 +348,11 @@ final class FocusController {
     }
 
     private struct WinInfo { let id: Int; let rect: CGRect; let pid: pid_t }
+
+    /// 第 i 块屏幕当前是否在显示全屏应用的空间（给缩略图遮罩用）
+    func screenShowsFullscreenSpace(_ i: Int) -> Bool {
+        isFullscreenSpace(i, windows: onScreenWindows(), screens: NSScreen.screens)
+    }
 
     /// 这块屏幕当前是否处于某个应用的全屏空间：
     /// 屏幕上最靠前的窗口所属应用，有一个 AXFullScreen 的窗口落在这块屏幕上。

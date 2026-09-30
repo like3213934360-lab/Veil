@@ -130,6 +130,9 @@ final class StageStripController {
         veils.sync(resize: false)
         for (i, rect) in layout.enumerated() where i < veils.windows.count {
             let w = veils.windows[i]
+            // 这块屏幕在显示全屏应用（或刚切走）：桌面空间里的遮罩原样留着，不重排、不收起，
+            // 否则 orderFront 会把它拖进全屏空间，快速切回来时就会闪
+            if w.wantsVisible, w.isParkedInOtherSpace || (isFullscreenSpace?(i) ?? false) { continue }
             if let rect {
                 w.fit(rect, animated: animation > 0 && !fadeIn, duration: animation)
                 if !w.wantsVisible || fadeIn { w.show() } else { w.orderFrontRegardless() }
@@ -141,6 +144,9 @@ final class StageStripController {
     }
 
     // MARK: 定位
+
+    /// 第 i 块屏幕是否正在显示全屏应用的空间（由 Core 接到 FocusController）
+    var isFullscreenSpace: ((Int) -> Bool)?
 
     /// 缩略图遮罩的位置变了（聚焦遮罩据此同步让位，保证两块严丝合缝）
     var onLayoutChange: ((TimeInterval) -> Void)?
