@@ -3,3 +3,4 @@ build/
 *.p12
 *.pem
 .shell_test
+shot.png

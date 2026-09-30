@@ -184,7 +184,9 @@ final class StageStripController {
         if manual > 0 { width = CGFloat(manual) }
         width = min(max(width, 60), vf.width / 3)
         let x = side == .left ? vf.minX : vf.maxX - width
-        return NSRect(x: x, y: vf.minY, width: width, height: vf.height)
+        // 竖列铺满整块屏幕高度（包括菜单栏下方和程序坞区域），
+        // 否则和聚焦遮罩拼接时，菜单栏那一小段会露出没模糊的桌面
+        return NSRect(x: x, y: full.minY, width: width, height: full.height)
     }
 
     /// 从遮罩里裁掉与窗口重叠的部分（保留靠屏幕边缘的那一侧）
