@@ -72,7 +72,7 @@ final class VeilWindow: NSWindow {
         isReleasedWhenClosed = false
         animationBehavior = .none
         self.level = level
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        applySpaceMode()
         alphaValue = 0
 
         let root = NSView(frame: NSRect(origin: .zero, size: frame.size))
@@ -93,6 +93,33 @@ final class VeilWindow: NSWindow {
         contentView = root
         apply(.current, animated: false)
     }
+
+    // MARK: 空间（Spaces）归属
+
+    enum SpaceMode {
+        /// 出现在这块屏幕的所有空间里（包括全屏应用空间）：用于“整块模糊”的屏幕、紧急隐私
+        case allSpaces
+        /// 只属于显示时所在的那个空间：切换空间时跟着桌面一起滑走 / 滑回来，
+        /// 不会在切换动画里盖到全屏应用上，切回来时也不需要重新淡入
+        case currentSpace
+    }
+
+    var spaceMode: SpaceMode = .allSpaces {
+        didSet { if spaceMode != oldValue { applySpaceMode() } }
+    }
+
+    private func applySpaceMode() {
+        switch spaceMode {
+        case .allSpaces:
+            collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        case .currentSpace:
+            collectionBehavior = [.moveToActiveSpace, .stationary, .ignoresCycle]
+        }
+    }
+
+    /// 遮罩还显示着，但留在了别的空间（例如切到了全屏应用）。这时不要收起它，
+    /// 切回原来的空间时它会随桌面一起直接出现。
+    var isParkedInOtherSpace: Bool { wantsVisible && isVisible && !isOnActiveSpace }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
@@ -215,10 +242,13 @@ final class TintView: NSView {
 final class ScreenVeils {
     private(set) var windows: [VeilWindow] = []
     private let level: NSWindow.Level
+    private let spaceMode: VeilWindow.SpaceMode
     private let rectFor: (NSScreen) -> NSRect?
 
-    init(level: NSWindow.Level, rect: @escaping (NSScreen) -> NSRect? = { $0.frame }) {
+    init(level: NSWindow.Level, spaceMode: VeilWindow.SpaceMode = .allSpaces,
+         rect: @escaping (NSScreen) -> NSRect? = { $0.frame }) {
         self.level = level
+        self.spaceMode = spaceMode
         self.rectFor = rect
     }
 
@@ -232,7 +262,9 @@ final class ScreenVeils {
             if i < windows.count {
                 if resize { windows[i].fit(rect) }
             } else {
-                windows.append(VeilWindow(frame: rect, level: level))
+                let w = VeilWindow(frame: rect, level: level)
+                w.spaceMode = spaceMode
+                windows.append(w)
             }
         }
     }

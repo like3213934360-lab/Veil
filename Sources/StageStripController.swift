@@ -4,7 +4,8 @@ import AppKit
 /// 位置只在事件发生时计算（切换应用、屏幕变化、开关），无轮询。
 final class StageStripController {
     /// 盖住 WindowManager 的缩略图（layer 0）和缩略图上的应用图标（layer 8）
-    private lazy var veils = ScreenVeils(level: .aboveStageIcons) { [weak self] screen in
+    /// 缩略图条只存在于桌面空间：遮罩也只属于当前桌面空间，切换到全屏应用时随桌面滑走，不会盖上去
+    private lazy var veils = ScreenVeils(level: .aboveStageIcons, spaceMode: .currentSpace) { [weak self] screen in
         self?.stripRect(on: screen)
     }
     private(set) var active = false
@@ -66,7 +67,7 @@ final class StageStripController {
         let p = NSEvent.mouseLocation
         for (i, w) in veils.windows.enumerated() {
             // 左右各放宽几像素，鼠标贴着屏幕边缘时也算进入
-            let inside = w.wantsVisible && w.frame.insetBy(dx: -6, dy: 0).contains(p)
+            let inside = w.wantsVisible && w.isOnActiveSpace && w.frame.insetBy(dx: -6, dy: 0).contains(p)
             if inside {
                 leaveWork[i]?.cancel()
                 leaveWork[i] = nil
@@ -132,7 +133,8 @@ final class StageStripController {
             if let rect {
                 w.fit(rect, animated: animation > 0 && !fadeIn, duration: animation)
                 if !w.wantsVisible || fadeIn { w.show() } else { w.orderFrontRegardless() }
-            } else {
+            } else if !w.isParkedInOtherSpace {
+                // 留在桌面空间里的遮罩不收起：切回桌面时直接出现，不用重新淡入
                 w.hide()
             }
         }

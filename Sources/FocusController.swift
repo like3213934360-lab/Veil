@@ -236,12 +236,16 @@ final class FocusController {
             }
 
             let prev = roles[i]
+            // 遮罩留在了别的空间（刚切到全屏应用）：不收起，切回去时随桌面一起直接出现，没有淡入闪烁
+            if role == .hidden, w.isParkedInOtherSpace { continue }
             roles[i] = role
             switch role {
             case .hidden:
                 w.hide()
             case .below(let id):
                 if w.level != .normal { w.level = .normal }
+                // 工作屏的遮罩只属于当前桌面空间：切换空间时跟着桌面一起滑动，不会盖到全屏应用上
+                w.spaceMode = .currentSpace
                 // 从别的角色切过来时，尺寸直接到位；同一角色下（缩略图条出现/消失）平滑过渡
                 let wasBelow: Bool = { if case .below = prev { return true }; return false }()
                 w.fit(rect, animated: wasBelow && fitDuration > 0, duration: fitDuration)
@@ -255,6 +259,8 @@ final class FocusController {
                 // 开了“顶层模糊”时提到最高层，连菜单栏、程序坞、通知弹窗一起盖住
                 let lv: NSWindow.Level = Settings.shared.topLevelBlurEffective ? .topMost : .aboveStageIcons
                 if w.level != lv { w.level = lv }
+                // 整块模糊的屏幕：这块屏幕上的所有空间都要盖住
+                w.spaceMode = .allSpaces
                 w.fit(rect)
                 if prev == .front, w.wantsVisible, !fadeIn {
                     w.orderFrontRegardless()
