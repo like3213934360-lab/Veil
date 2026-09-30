@@ -20,10 +20,16 @@ final class FocusController {
             guard let self else { return }
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             if let app, app.processIdentifier != self.selfPid { self.observe(pid: app.processIdentifier) }
+            // 用键盘（⌘Tab、Spotlight 等）切到另一块屏幕上的应用时，工作屏跟着焦点走
+            self.preferFocus = true
             self.focusChanged()
         }
         nc.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            // Ctrl+←/→ 切换空间（例如切到另一个全屏应用）：工作屏跟着焦点走，
+            // 并在切换动画结束后再校正一次（动画期间拿到的窗口列表可能还是旧空间的）
+            self?.preferFocus = true
             self?.focusChanged()
+            self?.spaceSettle()
         }
         if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != selfPid {
             observe(pid: front.processIdentifier)
@@ -122,6 +128,21 @@ final class FocusController {
         return Coords.toCocoa(CGRect(origin: p, size: s))
     }
 
+    /// 切换空间有约 0.5 秒动画，动画中取到的窗口列表还是旧空间的；动画结束后再校正几次
+    private var spaceWork: [DispatchWorkItem] = []
+    private func spaceSettle() {
+        spaceWork.forEach { $0.cancel() }
+        spaceWork = [0.35, 0.7].map { delay in
+            let w = DispatchWorkItem { [weak self] in
+                guard let self, self.active else { return }
+                self.preferFocus = true
+                self.reorder()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: w)
+            return w
+        }
+    }
+
     private func focusChanged() {
         onFocusChange?()
         guard active else { return }
@@ -171,9 +192,23 @@ final class FocusController {
         let focusScreen = targetRect.map { screenIndex(of: $0, in: screens) }
         lastFocusScreen = focusScreen
 
+        // 工作屏：
+        //  - 跟随焦点：焦点窗口所在屏幕；
+        //  - 跟随鼠标：鼠标跨到另一块屏幕时切过去；但用键盘切换应用 / 切换空间（⌃→、⌘Tab）时，
+        //    以焦点为准，否则切到的全屏应用会被整块盖住。之后鼠标再跨屏，又以鼠标为准。
         let work: Int
         if screens.count > 1, FocusScope.current == .followMouse {
-            work = mouseScreenIndex(screens) ?? focusScreen ?? 0
+            if preferFocus, let focusScreen {
+                work = focusScreen
+            } else if preferFocus, let active = activeSpaceScreen(screens) {
+                // 焦点窗口还没取到（切换动画中）：用前台应用所在的屏幕
+                work = active
+            } else if let w = workScreen, w < screens.count, !preferFocus {
+                work = w
+            } else {
+                work = mouseScreenIndex(screens) ?? focusScreen ?? 0
+            }
+            preferFocus = false
         } else {
             work = focusScreen ?? mouseScreenIndex(screens) ?? 0
         }
@@ -265,9 +300,26 @@ final class FocusController {
         }
     }
 
+    /// 下一次重排时，工作屏以焦点为准（键盘切换应用 / 切换空间之后）
+    private var preferFocus = false
+    /// 鼠标上一次所在的屏幕：只有鼠标真正跨屏时才按鼠标切换工作屏
+    private var lastMouseScreen: Int?
+
     private func mouseMoved() {
-        guard active, !suspended, let i = mouseScreenIndex(NSScreen.screens), i != workScreen else { return }
+        guard active, !suspended, let i = mouseScreenIndex(NSScreen.screens) else { return }
+        defer { lastMouseScreen = i }
+        guard i != lastMouseScreen, i != workScreen else { return }
+        workScreen = i
+        preferFocus = false
         reorder()
+    }
+
+    /// 前台应用最靠前窗口所在的屏幕（CGWindowList，不依赖 AX 焦点）
+    private func activeSpaceScreen(_ screens: [NSScreen]) -> Int? {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier, pid != selfPid,
+              let id = cgFrontWindowID(pid: pid),
+              let r = onScreenWindows().first(where: { $0.id == id })?.rect else { return nil }
+        return screenIndex(of: r, in: screens)
     }
 
     private func mouseScreenIndex(_ screens: [NSScreen]) -> Int? {
