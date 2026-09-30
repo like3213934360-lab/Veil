@@ -63,7 +63,7 @@ final class MenuBar: NSObject, NSMenuDelegate {
 
         if !hk.failed.isEmpty {
             let keys = hk.failed.map { HotKeys.label($0) }.joined(separator: "、")
-            menu.addItem(note("\(keys) 被占用，请换修饰键", color: .systemRed))
+            menu.addItem(note("\(keys) 被占用，请在“自定义快捷键”里修改", color: .systemRed))
         }
 
         // 滑块
@@ -108,21 +108,10 @@ final class MenuBar: NSObject, NSMenuDelegate {
             menu.addItem(submenu("多屏：\(FocusScope.current.name)", scopeMenu))
         }
 
-        // 快捷键修饰键
-        let modMenu = NSMenu()
-        for (i, p) in ModifierPreset.all.enumerated() {
-            let mi = NSMenuItem(title: "\(p.symbol) + 字母/方向键", action: #selector(pickModifier(_:)), keyEquivalent: "")
-            mi.target = self
-            mi.tag = i
-            mi.state = s.modifierPreset == i ? .on : .off
-            modMenu.addItem(mi)
-        }
-        modMenu.addItem(.separator())
-        for (a, desc) in [(HotKeys.Action.focus, "开关聚焦（按住偷看）"), (.strip, "开关缩略图模糊"),
-                          (.panic, "紧急隐私"), (.stronger, "增强模糊"), (.weaker, "减弱模糊")] {
-            modMenu.addItem(note("\(HotKeys.label(a))  \(desc)"))
-        }
-        menu.addItem(submenu("快捷键：\(ModifierPreset.current.symbol)", modMenu))
+        // 快捷键
+        let keys = NSMenuItem(title: "自定义快捷键…", action: #selector(openShortcuts), keyEquivalent: "")
+        keys.target = self
+        menu.addItem(keys)
 
         // 白名单
         menu.addItem(.separator())
@@ -164,8 +153,9 @@ final class MenuBar: NSObject, NSMenuDelegate {
         menu.addItem(axItem)
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "退出 Veil", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "退出 Veil", action: #selector(quit), keyEquivalent: "")
         quit.target = self
+        setShortcut(quit, .quit)
         menu.addItem(quit)
     }
 
@@ -178,24 +168,12 @@ final class MenuBar: NSObject, NSMenuDelegate {
         return mi
     }
 
+    /// 在菜单项右侧显示当前快捷键（只是显示，实际触发走全局快捷键）
     private func setShortcut(_ mi: NSMenuItem, _ a: HotKeys.Action) {
-        let key: String
-        switch a {
-        case .focus: key = "f"
-        case .strip: key = "s"
-        case .panic: key = "b"
-        case .stronger: key = String(UnicodeScalar(NSUpArrowFunctionKey)!)
-        case .weaker: key = String(UnicodeScalar(NSDownArrowFunctionKey)!)
-        }
-        guard !core.hotKeys.failed.contains(a) else { return }
+        guard let sc = a.shortcut, !core.hotKeys.failed.contains(a),
+              let key = KeyNames.keyEquivalent(sc.keyCode) else { return }
         mi.keyEquivalent = key
-        var m: NSEvent.ModifierFlags = []
-        let c = ModifierPreset.current.carbon
-        if c & 0x100 != 0 { m.insert(.command) }
-        if c & 0x200 != 0 { m.insert(.shift) }
-        if c & 0x800 != 0 { m.insert(.option) }
-        if c & 0x1000 != 0 { m.insert(.control) }
-        mi.keyEquivalentModifierMask = m
+        mi.keyEquivalentModifierMask = sc.modifierFlags
     }
 
     private func note(_ text: String, color: NSColor = .secondaryLabelColor) -> NSMenuItem {
@@ -245,7 +223,7 @@ final class MenuBar: NSObject, NSMenuDelegate {
         core.focus.scopeChanged()
     }
 
-    @objc private func pickModifier(_ sender: NSMenuItem) { core.setModifierPreset(sender.tag) }
+    @objc private func openShortcuts() { core.shortcutsWindow.show() }
 
     @objc private func addFrontToWhitelist() {
         if let app = core.lastFrontApp { core.addToWhitelist(app) }

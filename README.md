@@ -41,17 +41,19 @@ Veil 是一个纯原生 AppKit 编写的菜单栏小工具，用系统毛玻璃�
 
 ### 快捷键
 
-默认修饰键为 `⌃⌥⌘`（几乎不与其他应用冲突），可在菜单中切换为其他组合。
+所有快捷键都可以在菜单 **“自定义快捷键…”** 里修改：点击按钮后直接按下新的组合键，`⎋` 取消，`⌫` 清空。
 
-| 快捷键 | 作用 |
+| 默认快捷键 | 作用 |
 |---|---|
 | `⌃⌥⌘F` | 开关聚焦模式；按住 = 偷看 |
 | `⌃⌥⌘S` | 开关缩略图模糊 |
 | `⌃⌥⌘B` | 紧急隐私（全屏模糊） |
 | `⌃⌥⌘↑` / `⌃⌥⌘↓` | 增强 / 减弱模糊 |
+| `⌘1`（Windows 键盘上是 Win+1） | **强制退出 Veil**，任何状态下都能立即退出 |
 | 连按两下右 Option | 开关聚焦模式（可选，默认关闭） |
 
-快捷键被占用时，菜单中会以红字提示。
+快捷键被其他应用占用时，菜单和快捷键窗口中会以红字提示。
+只用 `⌘` 的组合（例如 `⌘1`）会覆盖其他应用里相同的快捷键，窗口中也会提示。
 
 ### 系统要求
 
@@ -109,7 +111,8 @@ Sources/
   VeilWindow.swift           遮罩窗口、动画时长、坐标换算
   FocusController.swift      聚焦模式：AXObserver + CGWindowList 定位主窗口
   StageStripController.swift 台前调度缩略图遮罩与悬停透视
-  HotKeys.swift              Carbon 全局快捷键、连按右 Option
+  HotKeys.swift              Carbon 全局快捷键（可自定义）、强制退出、连按右 Option
+  ShortcutsWindow.swift      自定义快捷键窗口与录制按钮
   MenuBar.swift              菜单栏图标与菜单
   Settings.swift             配置项（UserDefaults）、材质与快捷键预设
 Resources/Info.plist
@@ -164,17 +167,19 @@ All blurring is composited by WindowServer on the GPU. Veil never reads screen c
 
 ### Hotkeys
 
-The default modifier is `⌃⌥⌘` (rarely used by other apps); you can switch presets from the menu.
+Every hotkey can be changed from **"自定义快捷键…" (Customize Shortcuts)** in the menu: click a button and press the new combination; `⎋` cancels, `⌫` clears.
 
-| Hotkey | Action |
+| Default hotkey | Action |
 |---|---|
 | `⌃⌥⌘F` | Toggle focus mode; hold = peek |
 | `⌃⌥⌘S` | Toggle strip blur |
 | `⌃⌥⌘B` | Panic mode (full-screen blur) |
 | `⌃⌥⌘↑` / `⌃⌥⌘↓` | Stronger / weaker blur |
+| `⌘1` (Win+1 on a Windows keyboard) | **Force quit Veil** — works in any state |
 | Double-tap right Option | Toggle focus mode (optional, off by default) |
 
-If a hotkey is already taken, the menu shows a red warning.
+If a hotkey is already taken, the menu and the shortcuts window show a red warning.
+Combinations using only `⌘` (such as `⌘1`) override the same shortcut in other apps; the window warns about this too.
 
 ### Requirements
 
@@ -211,7 +216,8 @@ Sources/
   VeilWindow.swift           Mask window, animation timings, coordinate conversion
   FocusController.swift      Focus mode: AXObserver + CGWindowList to find the main window
   StageStripController.swift Stage Manager strip mask and hover reveal
-  HotKeys.swift              Carbon global hotkeys, double-tap right Option
+  HotKeys.swift              Carbon global hotkeys (customizable), force quit, double-tap right Option
+  ShortcutsWindow.swift      Shortcut editor window and recorder
   MenuBar.swift              Status item and menu
   Settings.swift             Settings (UserDefaults), material and modifier presets
 Resources/Info.plist

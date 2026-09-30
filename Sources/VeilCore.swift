@@ -52,8 +52,10 @@ final class VeilCore: NSObject, NSApplicationDelegate {
             self.focus.reorder(fitDuration: dur)
         }
 
+        Settings.shared.migrateModifierPreset()
         hotKeys.handler = { [weak self] action, pressed in self?.hotKey(action, pressed: pressed) }
         hotKeys.register()
+        VeilCore.restoreMuteBeforeExit = { [weak self] in self?.restoreMute() }
 
         doubleTap.onDoubleTap = { [weak self] in self?.toggleFocus() }
         doubleTap.enabled = Settings.shared.doubleOption
@@ -212,14 +214,21 @@ final class VeilCore: NSObject, NSApplicationDelegate {
             if pressed { adjustIntensity(by: 0.1) }
         case .weaker:
             if pressed { adjustIntensity(by: -0.1) }
+        case .quit:
+            break // 已在快捷键回调里直接退出
         }
     }
 
-    func setModifierPreset(_ i: Int) {
-        Settings.shared.modifierPreset = i
+    /// 快捷键改了之后重新注册
+    func shortcutsChanged() {
         hotKeys.register()
         menu?.refresh()
     }
+
+    /// 强制退出前要做的最少清理（恢复静音）。由快捷键回调直接调用，不依赖其他状态。
+    static var restoreMuteBeforeExit: (() -> Void)?
+
+    lazy var shortcutsWindow = ShortcutsWindow(core: self)
 
     // MARK: 系统事件
 

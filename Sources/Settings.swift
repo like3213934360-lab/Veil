@@ -11,7 +11,6 @@ final class Settings {
             K.dim: 0.3,
             K.material: 0,
             K.stripWidth: 0.0,
-            K.modifierPreset: 0,
             K.doubleOption: false,
             K.autoExternal: false,
             K.panicMute: false,
@@ -30,7 +29,6 @@ final class Settings {
         static let dim = "dim"
         static let material = "material"
         static let stripWidth = "stripWidth"
-        static let modifierPreset = "modifierPreset"
         static let doubleOption = "doubleOption"
         static let autoExternal = "autoExternal"
         static let panicMute = "panicMute"
@@ -80,12 +78,6 @@ final class Settings {
     var stripWidth: Double {
         get { d.double(forKey: K.stripWidth) }
         set { d.set(newValue, forKey: K.stripWidth) }
-    }
-
-    /// 快捷键修饰键预设下标，见 ModifierPreset.all
-    var modifierPreset: Int {
-        get { min(max(0, d.integer(forKey: K.modifierPreset)), ModifierPreset.all.count - 1) }
-        set { d.set(newValue, forKey: K.modifierPreset) }
     }
 
     var doubleOption: Bool { get { d.bool(forKey: K.doubleOption) } set { d.set(newValue, forKey: K.doubleOption) } }
@@ -147,18 +139,51 @@ enum FocusScope: Int, CaseIterable {
     }
 }
 
-/// 快捷键修饰键预设（Carbon 修饰键掩码）
-struct ModifierPreset {
-    let symbol: String
-    let carbon: UInt32
+// MARK: - 自定义快捷键存储
+//
+// 保存在 UserDefaults 的 "shortcuts" 字典里：{ 动作键名: [keyCode, mods] }
+// 没有记录 = 用默认值；记录为空数组 = 用户清空了（不注册）。
 
-    // Carbon: cmdKey=0x100, shiftKey=0x200, optionKey=0x800, controlKey=0x1000
-    static let all: [ModifierPreset] = [
-        ModifierPreset(symbol: "⌃⌥⌘", carbon: 0x1000 | 0x800 | 0x100),
-        ModifierPreset(symbol: "⌃⌥⇧", carbon: 0x1000 | 0x800 | 0x200),
-        ModifierPreset(symbol: "⌃⇧⌘", carbon: 0x1000 | 0x200 | 0x100),
-        ModifierPreset(symbol: "⌃⌥⇧⌘", carbon: 0x1000 | 0x800 | 0x200 | 0x100),
-    ]
+extension Settings {
+    private static let shortcutsKey = "shortcuts"
 
-    static var current: ModifierPreset { all[Settings.shared.modifierPreset] }
+    private var shortcutDict: [String: [Int]] {
+        get { UserDefaults.standard.dictionary(forKey: Self.shortcutsKey) as? [String: [Int]] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.shortcutsKey) }
+    }
+
+    func shortcut(for a: HotKeys.Action) -> Shortcut? {
+        guard let v = shortcutDict[a.key] else { return a.defaultShortcut }
+        guard v.count == 2 else { return nil }
+        return Shortcut(keyCode: UInt32(v[0]), mods: UInt32(v[1]))
+    }
+
+    /// 设置快捷键；nil = 清空（不使用快捷键）
+    func setShortcut(_ s: Shortcut?, for a: HotKeys.Action) {
+        var dict = shortcutDict
+        dict[a.key] = s.map { [Int($0.keyCode), Int($0.mods)] } ?? []
+        shortcutDict = dict
+    }
+
+    func resetShortcuts() {
+        UserDefaults.standard.removeObject(forKey: Self.shortcutsKey)
+    }
+
+    /// 旧版本只能选修饰键预设；升级时把它换算成每个动作的具体快捷键，保持原来的按法
+    func migrateModifierPreset() {
+        let d = UserDefaults.standard
+        guard d.object(forKey: "modifierPreset") != nil else { return }
+        let presets: [UInt32] = [
+            Shortcut.control | Shortcut.option | Shortcut.cmd,
+            Shortcut.control | Shortcut.option | Shortcut.shift,
+            Shortcut.control | Shortcut.shift | Shortcut.cmd,
+            Shortcut.control | Shortcut.option | Shortcut.shift | Shortcut.cmd,
+        ]
+        let i = d.integer(forKey: "modifierPreset")
+        d.removeObject(forKey: "modifierPreset")
+        guard i > 0, i < presets.count, d.object(forKey: Self.shortcutsKey) == nil else { return }
+        for a in HotKeys.Action.allCases where a != .quit {
+            setShortcut(Shortcut(keyCode: a.defaultShortcut.keyCode, mods: presets[i]), for: a)
+        }
+    }
 }
