@@ -43,9 +43,8 @@ final class MenuBar: NSObject, NSMenuDelegate {
         if !StageStripController.stageManagerEnabled {
             menu.addItem(note("台前调度未开启"))
         }
-        let hoverItem = toggle("鼠标悬停时透视缩略图", on: Settings.shared.hoverReveal, action: #selector(toggleHoverReveal))
-        hoverItem.indentationLevel = 1
-        menu.addItem(hoverItem)
+        // 不用 indentationLevel：它会把勾选标记一起右移，和其他项的勾不在一列
+        menu.addItem(toggle("鼠标悬停时透视缩略图", on: Settings.shared.hoverReveal, action: #selector(toggleHoverReveal)))
 
         let panicItem = toggle("紧急隐私（全屏模糊）", on: core.panicOn, action: #selector(togglePanic))
         setShortcut(panicItem, .panic)
@@ -270,28 +269,47 @@ private final class SliderRow: NSView {
         self.format = format
         self.onChange = onChange
         slider = NSSlider(value: value, minValue: min, maxValue: max, target: nil, action: nil)
-        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 28))
+        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 30))
+        autoresizingMask = [.width]
 
+        // 标签用和普通菜单项一样的字体与左边距，文字左缘与上下菜单项对齐；
+        // 右侧数值与菜单项的快捷键列右对齐。用 Auto Layout 让菜单变宽时右侧仍贴边。
         let label = NSTextField(labelWithString: title)
         label.font = .menuFont(ofSize: 0)
-        label.frame = NSRect(x: 20, y: 5, width: 72, height: 18)
+        label.textColor = .labelColor
 
-        slider.frame = NSRect(x: 92, y: 4, width: 132, height: 20)
         slider.isContinuous = true
         slider.controlSize = .small
         slider.target = self
         slider.action = #selector(changed)
 
-        valueLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         valueLabel.textColor = .secondaryLabelColor
         valueLabel.alignment = .right
-        valueLabel.frame = NSRect(x: 226, y: 6, width: 42, height: 16)
         valueLabel.stringValue = format(value)
 
-        addSubview(label)
-        addSubview(slider)
-        addSubview(valueLabel)
+        for v in [label, slider, valueLabel] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.textInset),
+            label.widthAnchor.constraint(equalToConstant: 76),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            slider.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 6),
+            slider.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            valueLabel.leadingAnchor.constraint(equalTo: slider.trailingAnchor, constant: 10),
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.rightInset),
+            valueLabel.widthAnchor.constraint(equalToConstant: 44),
+            valueLabel.firstBaselineAnchor.constraint(equalTo: label.firstBaselineAnchor),
+        ])
     }
+
+    /// 普通菜单项文字的左边距（勾选列之后）和右边距（快捷键列右缘），与系统菜单一致
+    static let textInset: CGFloat = 29
+    static let rightInset: CGFloat = 17
 
     required init?(coder: NSCoder) { fatalError() }
 
